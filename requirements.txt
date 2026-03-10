@@ -3,3 +3,4 @@ vnstock
 pandas
 python-dotenv
 pytz
+cachetools
