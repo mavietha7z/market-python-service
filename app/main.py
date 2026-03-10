@@ -10,6 +10,9 @@ from app.routes.company import router as company_router
 from app.core.auth import verify_api_key
 
 from app.middlewares.api_key import APIKeyMiddleware
+from app.routes.listing import router as listing_router
+
+
 
 
 # ==============================
@@ -110,6 +113,12 @@ app.include_router(
     company_router,
     prefix="/api/v1/company",
     tags=["Company"]
+)
+
+app.include_router(
+    listing_router,
+    prefix="/api/v1",
+    tags=["Listing"]
 )
 
 # ==============================
