@@ -21,7 +21,7 @@ app = FastAPI(
 cache = TTLCache(maxsize=1000, ttl=300)
 
 # Các nguồn dữ liệu được hỗ trợ
-VALID_SOURCES = ["VCI", "KBS"]
+VALID_SOURCES = ["KBS", "VCI"]
 
 
 def normalize_data(data):

@@ -17,7 +17,7 @@ from app.services.company import (
 )
 
 # Các nguồn dữ liệu được hỗ trợ
-VALID_SOURCES = ["VCI", "KBS"]
+VALID_SOURCES = ["KBS", "VCI"]
 
 router = APIRouter(
     prefix="/company",
@@ -51,7 +51,7 @@ def success_response(data, message: str = "Success"):
 @router.get("/overview")
 def api_company_overview(
     symbol: str = Query(..., description="Mã cổ phiếu, ví dụ: TCB"),
-    source: str = Query("VCI", description=f"Nguồn dữ liệu: {', '.join(VALID_SOURCES)}"),
+    source: str = Query("KBS", description=f"Nguồn dữ liệu: {', '.join(VALID_SOURCES)}"),
     x_api_key: str = Header(..., alias="X-API-Key")
 ):
     verify_api_key(x_api_key)
@@ -67,7 +67,7 @@ def api_company_overview(
 @router.get("/shareholders")
 def api_company_shareholders(
     symbol: str = Query(..., description="Mã cổ phiếu"),
-    source: str = Query("VCI", description=f"Nguồn dữ liệu: {', '.join(VALID_SOURCES)}"),
+    source: str = Query("KBS", description=f"Nguồn dữ liệu: {', '.join(VALID_SOURCES)}"),
     x_api_key: str = Header(..., alias="X-API-Key")
 ):
     verify_api_key(x_api_key)
@@ -83,7 +83,7 @@ def api_company_shareholders(
 @router.get("/officers")
 def api_company_officers(
     symbol: str = Query(..., description="Mã cổ phiếu"),
-    source: str = Query("VCI", description=f"Nguồn dữ liệu: {', '.join(VALID_SOURCES)}"),
+    source: str = Query("KBS", description=f"Nguồn dữ liệu: {', '.join(VALID_SOURCES)}"),
     x_api_key: str = Header(..., alias="X-API-Key")
 ):
     verify_api_key(x_api_key)
@@ -99,7 +99,7 @@ def api_company_officers(
 @router.get("/subsidiaries")
 def api_company_subsidiaries(
     symbol: str = Query(..., description="Mã cổ phiếu"),
-    source: str = Query("VCI", description=f"Nguồn dữ liệu: {', '.join(VALID_SOURCES)}"),
+    source: str = Query("KBS", description=f"Nguồn dữ liệu: {', '.join(VALID_SOURCES)}"),
     x_api_key: str = Header(..., alias="X-API-Key")
 ):
     verify_api_key(x_api_key)
@@ -115,7 +115,7 @@ def api_company_subsidiaries(
 @router.get("/affiliate")
 def api_company_affiliate(
     symbol: str = Query(..., description="Mã cổ phiếu"),
-    source: str = Query("VCI", description=f"Nguồn dữ liệu: {', '.join(VALID_SOURCES)}"),
+    source: str = Query("KBS", description=f"Nguồn dữ liệu: {', '.join(VALID_SOURCES)}"),
     x_api_key: str = Header(..., alias="X-API-Key")
 ):
     verify_api_key(x_api_key)
@@ -131,7 +131,7 @@ def api_company_affiliate(
 @router.get("/news")
 def api_company_news(
     symbol: str = Query(..., description="Mã cổ phiếu"),
-    source: str = Query("VCI", description=f"Nguồn dữ liệu: {', '.join(VALID_SOURCES)}"),
+    source: str = Query("KBS", description=f"Nguồn dữ liệu: {', '.join(VALID_SOURCES)}"),
     x_api_key: str = Header(..., alias="X-API-Key")
 ):
     verify_api_key(x_api_key)
@@ -147,7 +147,7 @@ def api_company_news(
 @router.get("/events")
 def api_company_events(
     symbol: str = Query(..., description="Mã cổ phiếu"),
-    source: str = Query("VCI", description=f"Nguồn dữ liệu: {', '.join(VALID_SOURCES)}"),
+    source: str = Query("KBS", description=f"Nguồn dữ liệu: {', '.join(VALID_SOURCES)}"),
     x_api_key: str = Header(..., alias="X-API-Key")
 ):
     verify_api_key(x_api_key)
@@ -163,7 +163,7 @@ def api_company_events(
 @router.get("/ownership")
 def api_company_ownership(
     symbol: str = Query(..., description="Mã cổ phiếu"),
-    source: str = Query("VCI", description=f"Nguồn dữ liệu: {', '.join(VALID_SOURCES)}"),
+    source: str = Query("KBS", description=f"Nguồn dữ liệu: {', '.join(VALID_SOURCES)}"),
     x_api_key: str = Header(..., alias="X-API-Key")
 ):
     verify_api_key(x_api_key)
@@ -179,7 +179,7 @@ def api_company_ownership(
 @router.get("/capital-history")
 def api_company_capital_history(
     symbol: str = Query(..., description="Mã cổ phiếu"),
-    source: str = Query("VCI", description=f"Nguồn dữ liệu: {', '.join(VALID_SOURCES)}"),
+    source: str = Query("KBS", description=f"Nguồn dữ liệu: {', '.join(VALID_SOURCES)}"),
     x_api_key: str = Header(..., alias="X-API-Key")
 ):
     verify_api_key(x_api_key)
@@ -195,7 +195,7 @@ def api_company_capital_history(
 @router.get("/insider-trading")
 def api_company_insider_trading(
     symbol: str = Query(..., description="Mã cổ phiếu"),
-    source: str = Query("VCI", description=f"Nguồn dữ liệu: {', '.join(VALID_SOURCES)}"),
+    source: str = Query("KBS", description=f"Nguồn dữ liệu: {', '.join(VALID_SOURCES)}"),
     x_api_key: str = Header(..., alias="X-API-Key")
 ):
     verify_api_key(x_api_key)
@@ -211,7 +211,7 @@ def api_company_insider_trading(
 @router.get("/reports")
 def api_company_reports(
     symbol: str = Query(..., description="Mã cổ phiếu"),
-    source: str = Query("VCI", description=f"Nguồn dữ liệu: {', '.join(VALID_SOURCES)}"),
+    source: str = Query("KBS", description=f"Nguồn dữ liệu: {', '.join(VALID_SOURCES)}"),
     x_api_key: str = Header(..., alias="X-API-Key")
 ):
     verify_api_key(x_api_key)
@@ -227,7 +227,7 @@ def api_company_reports(
 @router.get("/trading-stats")
 def api_company_trading_stats(
     symbol: str = Query(..., description="Mã cổ phiếu"),
-    source: str = Query("VCI", description=f"Nguồn dữ liệu: {', '.join(VALID_SOURCES)}"),
+    source: str = Query("KBS", description=f"Nguồn dữ liệu: {', '.join(VALID_SOURCES)}"),
     x_api_key: str = Header(..., alias="X-API-Key")
 ):
     verify_api_key(x_api_key)
@@ -243,7 +243,7 @@ def api_company_trading_stats(
 @router.get("/ratio-summary")
 def api_company_ratio_summary(
     symbol: str = Query(..., description="Mã cổ phiếu"),
-    source: str = Query("VCI", description=f"Nguồn dữ liệu: {', '.join(VALID_SOURCES)}"),
+    source: str = Query("KBS", description=f"Nguồn dữ liệu: {', '.join(VALID_SOURCES)}"),
     x_api_key: str = Header(..., alias="X-API-Key")
 ):
     verify_api_key(x_api_key)
