@@ -1,31 +1,67 @@
 import os
-
 from dotenv import load_dotenv
+
 load_dotenv()
 
-from fastapi import FastAPI, Query, HTTPException, Header
-from pydantic import BaseModel
-from vnstock import Vnstock
+from fastapi import FastAPI, Header, HTTPException
 from cachetools import TTLCache
-from app.routes.company import router as companyRouter
+
+from app.routes.company import router as company_router
 from app.core.auth import verify_api_key
+
+from app.middlewares.api_key import APIKeyMiddleware
+
+
+# ==============================
+# FastAPI App
+# ==============================
 
 app = FastAPI(
     title="Market Python Service",
-    version="1.0.0"
+    version="1.0.0",
+    description="Vietnam Stock Market Data API powered by vnstock"
 )
 
-# Cache RAM
-# maxsize = số request cache
-# ttl = 300s = 5 phút
-cache = TTLCache(maxsize=1000, ttl=300)
+app.add_middleware(APIKeyMiddleware)
 
-# Các nguồn dữ liệu được hỗ trợ
-VALID_SOURCES = ["KBS", "VCI"]
+# ==============================
+# Cache RAM
+# ==============================
+
+cache = TTLCache(
+    maxsize=1000,  # số request cache
+    ttl=300        # 5 phút
+)
+
+# ==============================
+# Supported Data Sources
+# ==============================
+
+VALID_SOURCES = {"KBS", "VCI"}
+
+# ==============================
+# Helper Functions
+# ==============================
+
+def validate_source(source: str) -> str:
+    """
+    Validate source parameter
+    """
+    source = source.upper()
+
+    if source not in VALID_SOURCES:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Invalid source. Supported sources: {', '.join(VALID_SOURCES)}"
+        )
+
+    return source
 
 
 def normalize_data(data):
-    """Chuẩn hóa dữ liệu từ pandas DataFrame/Series thành JSON"""
+    """
+    Convert pandas DataFrame/Series → JSON serializable
+    """
     import pandas as pd
     import numpy as np
 
@@ -33,16 +69,31 @@ def normalize_data(data):
         return None
 
     if isinstance(data, pd.DataFrame):
-        df = data.replace({np.nan: None, pd.NaT: None, np.inf: None, -np.inf: None})
+
+        df = data.replace({
+            np.nan: None,
+            pd.NaT: None,
+            np.inf: None,
+            -np.inf: None
+        })
+
         for col in df.columns:
             if pd.api.types.is_datetime64_any_dtype(df[col]):
-                df[col] = df[col].apply(lambda x: x.isoformat() if x is not None else None)
+                df[col] = df[col].apply(
+                    lambda x: x.isoformat() if x else None
+                )
+
         return df.to_dict(orient="records")
 
     if isinstance(data, pd.Series):
-        series = data.replace({np.nan: None, pd.NaT: None, np.inf: None, -np.inf: None})
-        if pd.api.types.is_datetime64_any_dtype(series):
-            series = series.apply(lambda x: x.isoformat() if x is not None else None)
+
+        series = data.replace({
+            np.nan: None,
+            pd.NaT: None,
+            np.inf: None,
+            -np.inf: None
+        })
+
         return series.to_dict()
 
     if isinstance(data, (dict, list)):
@@ -51,23 +102,26 @@ def normalize_data(data):
     return data
 
 
-def validate_source(source: str) -> str:
-    """Validate source parameter"""
-    if source not in VALID_SOURCES:
-        raise HTTPException(
-            status_code=400,
-            detail=f"Invalid source. Supported sources: {', '.join(VALID_SOURCES)}"
-        )
-    return source
+# ==============================
+# Routers
+# ==============================
 
+app.include_router(
+    company_router,
+    prefix="/api/v1/company",
+    tags=["Company"]
+)
 
-app.include_router(companyRouter)
-
+# ==============================
+# System Endpoints
+# ==============================
 
 @app.get("/")
 def root():
     return {
-        "message": "Python market service is running"
+        "service": "Market Python Service",
+        "version": "1.0.0",
+        "status": "running"
     }
 
 
@@ -78,4 +132,3 @@ def health(api_key: str = Header(..., alias="X-API-Key")):
     return {
         "status": "ok"
     }
-

@@ -1,26 +1,31 @@
-from fastapi import Request
+from fastapi import Request, HTTPException
 from starlette.middleware.base import BaseHTTPMiddleware
-import os
-
-API_KEY = os.getenv("API_KEY", "dev-key")
+from app.core.auth import verify_api_key
 
 
-class ApiKeyMiddleware(BaseHTTPMiddleware):
+class APIKeyMiddleware(BaseHTTPMiddleware):
 
     async def dispatch(self, request: Request, call_next):
 
-        # bỏ qua swagger
-        if request.url.path in ["/docs", "/openapi.json", "/redoc"]:
+        # Bỏ qua docs
+        if request.url.path in [
+            "/docs",
+            "/openapi.json",
+            "/redoc",
+            "/"
+        ]:
             return await call_next(request)
 
-        key = request.headers.get("X-API-Key")
+        api_key = request.headers.get("X-API-Key")
 
-        if key != API_KEY:
-            from fastapi.responses import JSONResponse
-
-            return JSONResponse(
+        if not api_key:
+            raise HTTPException(
                 status_code=401,
-                content={"detail": "Invalid API Key"}
+                detail="Missing API Key"
             )
 
-        return await call_next(request)
+        verify_api_key(api_key)
+
+        response = await call_next(request)
+
+        return response
