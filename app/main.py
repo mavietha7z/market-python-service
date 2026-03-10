@@ -5,6 +5,7 @@ from fastapi import FastAPI, Query, HTTPException, Header
 from pydantic import BaseModel
 from vnstock import Vnstock
 from cachetools import TTLCache
+from app.routes.company import router as companyRouter
 
 load_dotenv()
 
@@ -12,6 +13,7 @@ app = FastAPI(
     title="Market Python Service",
     version="1.0.0"
 )
+
 
 internalApiKey = os.getenv("INTERNAL_API_KEY", "")
 
@@ -32,6 +34,7 @@ class StockHistoryBatchRequest(BaseModel):
     end: str
     interval: str = "1D"
 
+app.include_router(companyRouter)
 
 @app.get("/")
 def root():
