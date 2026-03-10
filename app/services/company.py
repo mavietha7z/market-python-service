@@ -1,8 +1,6 @@
 from vnstock import Vnstock
 import pandas as pd
 import numpy as np
-from datetime import datetime
-
 
 def normalize_data(data):
     """Chuẩn hóa dữ liệu từ pandas DataFrame/Series thành JSON"""

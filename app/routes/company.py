@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, Query, HTTPException, Header
+from fastapi import APIRouter, Query, HTTPException, Header
 from app.core.auth import verify_api_key
 from app.services.company import (
     service_company_overview,
