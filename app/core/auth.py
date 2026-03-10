@@ -11,7 +11,10 @@ api_key_header = APIKeyHeader(
 
 
 def verify_api_key(api_key: str = Security(api_key_header)):
-    if api_key == API_KEY:
+    # Đọc API_KEY trong function để đảm bảo load_dotenv() đã chạy
+    valid_api_key = os.getenv("API_KEY", "dev-key")
+    
+    if api_key == valid_api_key:
         return api_key
 
     raise HTTPException(

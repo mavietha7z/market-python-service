@@ -1,19 +1,39 @@
 from vnstock import Vnstock
 import pandas as pd
 import numpy as np
+from datetime import datetime
 
 
 def normalize_data(data):
+    """Chuẩn hóa dữ liệu từ pandas DataFrame/Series thành JSON"""
+    if data is None:
+        return None
+
     if isinstance(data, pd.DataFrame):
-        return data.replace({np.nan: None}).to_dict(orient="records")
+        # Replace NaN, NaT, inf với None để JSON hóa đúng
+        df = data.replace({np.nan: None, pd.NaT: None, np.inf: None, -np.inf: None})
+        # Convert datetime columns to ISO string
+        for col in df.columns:
+            if pd.api.types.is_datetime64_any_dtype(df[col]):
+                df[col] = df[col].apply(lambda x: x.isoformat() if x is not None else None)
+        return df.to_dict(orient="records")
 
     if isinstance(data, pd.Series):
-        return data.replace({np.nan: None}).to_dict()
+        series = data.replace({np.nan: None, pd.NaT: None, np.inf: None, -np.inf: None})
+        # Convert datetime if needed
+        if pd.api.types.is_datetime64_any_dtype(series):
+            series = series.apply(lambda x: x.isoformat() if x is not None else None)
+        return series.to_dict()
+
+    # If already a dict or list, return as-is
+    if isinstance(data, (dict, list)):
+        return data
 
     return data
 
 
 def get_stock(symbol: str, source: str):
+    """Khởi tạo stock instance với source được chỉ định"""
     return Vnstock().stock(symbol=symbol, source=source)
 
 

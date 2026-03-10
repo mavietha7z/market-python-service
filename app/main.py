@@ -1,40 +1,68 @@
 import os
 
 from dotenv import load_dotenv
+load_dotenv()
+
 from fastapi import FastAPI, Query, HTTPException, Header
 from pydantic import BaseModel
 from vnstock import Vnstock
 from cachetools import TTLCache
 from app.routes.company import router as companyRouter
-
-load_dotenv()
+from app.core.auth import verify_api_key
 
 app = FastAPI(
     title="Market Python Service",
     version="1.0.0"
 )
 
-
-internalApiKey = os.getenv("INTERNAL_API_KEY", "")
-
 # Cache RAM
 # maxsize = số request cache
 # ttl = 300s = 5 phút
 cache = TTLCache(maxsize=1000, ttl=300)
 
-
-def verifyApiKey(xApiKey: str | None):
-    if internalApiKey and xApiKey != internalApiKey:
-        raise HTTPException(status_code=401, detail="Unauthorized")
+# Các nguồn dữ liệu được hỗ trợ
+VALID_SOURCES = ["VCI", "KBS"]
 
 
-class StockHistoryBatchRequest(BaseModel):
-    symbols: list[str]
-    start: str
-    end: str
-    interval: str = "1D"
+def normalize_data(data):
+    """Chuẩn hóa dữ liệu từ pandas DataFrame/Series thành JSON"""
+    import pandas as pd
+    import numpy as np
+
+    if data is None:
+        return None
+
+    if isinstance(data, pd.DataFrame):
+        df = data.replace({np.nan: None, pd.NaT: None, np.inf: None, -np.inf: None})
+        for col in df.columns:
+            if pd.api.types.is_datetime64_any_dtype(df[col]):
+                df[col] = df[col].apply(lambda x: x.isoformat() if x is not None else None)
+        return df.to_dict(orient="records")
+
+    if isinstance(data, pd.Series):
+        series = data.replace({np.nan: None, pd.NaT: None, np.inf: None, -np.inf: None})
+        if pd.api.types.is_datetime64_any_dtype(series):
+            series = series.apply(lambda x: x.isoformat() if x is not None else None)
+        return series.to_dict()
+
+    if isinstance(data, (dict, list)):
+        return data
+
+    return data
+
+
+def validate_source(source: str) -> str:
+    """Validate source parameter"""
+    if source not in VALID_SOURCES:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Invalid source. Supported sources: {', '.join(VALID_SOURCES)}"
+        )
+    return source
+
 
 app.include_router(companyRouter)
+
 
 @app.get("/")
 def root():
@@ -44,114 +72,10 @@ def root():
 
 
 @app.get("/health")
-def health(x_api_key: str | None = Header(default=None)):
-    verifyApiKey(x_api_key)
+def health(api_key: str = Header(..., alias="X-API-Key")):
+    verify_api_key(api_key)
 
     return {
         "status": "ok"
     }
 
-
-@app.get("/stocks/history")
-def getStockHistory(
-    symbol: str = Query(..., description="Ví dụ: TCB"),
-    start: str = Query(..., description="YYYY-MM-DD"),
-    end: str = Query(..., description="YYYY-MM-DD"),
-    interval: str = Query("1D", description="Ví dụ: 1D"),
-    x_api_key: str | None = Header(default=None)
-):
-    verifyApiKey(x_api_key)
-
-    symbol = symbol.upper()
-
-    # Cache key
-    cache_key = f"history:{symbol}:{start}:{end}:{interval}"
-
-    if cache_key in cache:
-        return cache[cache_key]
-
-    try:
-        stock = Vnstock().stock(symbol=symbol, source="VCI")
-
-        dataFrame = stock.quote.history(
-            start=start,
-            end=end,
-            interval=interval
-        )
-
-        items = dataFrame.to_dict(orient="records")
-
-        response = {
-            "success": True,
-            "symbol": symbol,
-            "start": start,
-            "end": end,
-            "interval": interval,
-            "count": len(items),
-            "items": items
-        }
-
-        cache[cache_key] = response
-
-        return response
-
-    except Exception as error:
-        raise HTTPException(status_code=500, detail=str(error))
-
-
-@app.post("/stocks/history/batch")
-def getStockHistoryBatch(
-    payload: StockHistoryBatchRequest,
-    x_api_key: str | None = Header(default=None)
-):
-    verifyApiKey(x_api_key)
-
-    results = []
-
-    for symbol in payload.symbols:
-        symbol = symbol.upper()
-
-        cache_key = f"history:{symbol}:{payload.start}:{payload.end}:{payload.interval}"
-
-        # Nếu có cache thì dùng luôn
-        if cache_key in cache:
-            results.append(cache[cache_key])
-            continue
-
-        try:
-            stock = Vnstock().stock(symbol=symbol, source="VCI")
-
-            dataFrame = stock.quote.history(
-                start=payload.start,
-                end=payload.end,
-                interval=payload.interval
-            )
-
-            items = dataFrame.to_dict(orient="records")
-
-            response = {
-                "success": True,
-                "symbol": symbol,
-                "start": payload.start,
-                "end": payload.end,
-                "interval": payload.interval,
-                "count": len(items),
-                "items": items
-            }
-
-            cache[cache_key] = response
-
-            results.append(response)
-
-        except Exception as error:
-            results.append({
-                "success": False,
-                "symbol": symbol,
-                "error": str(error)
-            })
-
-    return {
-        "success": True,
-        "count": len(results),
-        "results": results
-    }
