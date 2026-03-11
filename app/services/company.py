@@ -67,10 +67,10 @@ def get_stock(symbol: str, source: str):
 
 
 # ============================
-# Generic Handler
+# Generic Handler - calls through data_source
 # ============================
 
-def fetch_company_data(symbol: str, source: str, method: str):
+def fetch_company_data(symbol: str, source: str, method: str, **kwargs):
 
     try:
 
@@ -78,13 +78,20 @@ def fetch_company_data(symbol: str, source: str, method: str):
 
         company = stock.company
 
-        if not hasattr(company, method):
+        data_source = company.data_source
+
+        if not hasattr(data_source, method):
             raise HTTPException(
                 status_code=400,
                 detail=f"Method '{method}' not supported for source '{source}'"
             )
 
-        data = getattr(company, method)()
+        func = getattr(data_source, method)
+
+        if kwargs:
+            data = func(**kwargs)
+        else:
+            data = func()
 
         return normalize_data(data)
 
@@ -131,16 +138,16 @@ def service_company_events(symbol, source):
     return fetch_company_data(symbol, source, "events")
 
 
+def service_company_insider_trading(symbol, source, page=1, page_size=10):
+    return fetch_company_data(symbol, source, "insider_trading", page=page, page_size=page_size)
+
+
 def service_company_ownership(symbol, source):
     return fetch_company_data(symbol, source, "ownership")
 
 
 def service_company_capital_history(symbol, source):
     return fetch_company_data(symbol, source, "capital_history")
-
-
-def service_company_insider_trading(symbol, source):
-    return fetch_company_data(symbol, source, "insider_trading")
 
 
 def service_company_reports(symbol, source):

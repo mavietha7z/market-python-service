@@ -6,13 +6,19 @@ from app.services.listing import (
     serviceListingSymbolsByGroup,
     serviceListingSymbolsByIndustries,
     serviceListingIndustriesICB,
-    serviceListingAllIndices
+    serviceListingAllIndices,
+    serviceListingIndicesByGroup,
+    serviceListingAllFutureIndices,
+    serviceListingAllCoveredWarrant,
+    serviceListingAllBonds,
+    serviceListingAllGovernmentBonds,
+    serviceListingSearchSymbolId
 )
 
 VALID_SOURCES = {"KBS", "VCI"}
 
 router = APIRouter(
-    prefix="/listing",
+    prefix="",
     tags=["Listing"]
 )
 
@@ -121,3 +127,77 @@ def routeListingAllIndices(
     x_api_key: str = Header(..., alias="X-API-Key")
 ):
     return handle_request(serviceListingAllIndices, source)
+
+
+# =============================
+# INDICES BY GROUP
+# =============================
+
+@router.get("/indices-by-group")
+def routeListingIndicesByGroup(
+    group: str = Query(..., description="HOSE Indices | Sector Indices | Investment Indices | VNX Indices"),
+    source: str = Query("KBS"),
+    x_api_key: str = Header(..., alias="X-API-Key")
+):
+    return handle_request(serviceListingIndicesByGroup, source, group)
+
+
+# =============================
+# ALL FUTURE INDICES
+# =============================
+
+@router.get("/all-future-indices")
+def routeListingAllFutureIndices(
+    source: str = Query("KBS"),
+    x_api_key: str = Header(..., alias="X-API-Key")
+):
+    return handle_request(serviceListingAllFutureIndices, source)
+
+
+# =============================
+# ALL COVERED WARRANT
+# =============================
+
+@router.get("/all-covered-warrant")
+def routeListingAllCoveredWarrant(
+    source: str = Query("KBS"),
+    x_api_key: str = Header(..., alias="X-API-Key")
+):
+    return handle_request(serviceListingAllCoveredWarrant, source)
+
+
+# =============================
+# ALL BONDS
+# =============================
+
+@router.get("/all-bonds")
+def routeListingAllBonds(
+    source: str = Query("KBS"),
+    x_api_key: str = Header(..., alias="X-API-Key")
+):
+    return handle_request(serviceListingAllBonds, source)
+
+
+# =============================
+# ALL GOVERNMENT BONDS
+# =============================
+
+@router.get("/all-government-bonds")
+def routeListingAllGovernmentBonds(
+    source: str = Query("VCI"),
+    x_api_key: str = Header(..., alias="X-API-Key")
+):
+    return handle_request(serviceListingAllGovernmentBonds, source)
+
+
+# =============================
+# SEARCH SYMBOL ID
+# =============================
+
+@router.get("/search-symbol-id")
+def routeListingSearchSymbolId(
+    symbol: str = Query(..., description="USD | EUR | BTC | ..."),
+    x_api_key: str = Header(..., alias="X-API-Key")
+):
+    source = "VCI"
+    return base_response(source, serviceListingSearchSymbolId(symbol))

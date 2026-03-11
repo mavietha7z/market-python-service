@@ -117,7 +117,7 @@ app.include_router(
 
 app.include_router(
     listing_router,
-    prefix="/api/v1",
+    prefix="/api/v1/listing",
     tags=["Listing"]
 )
 

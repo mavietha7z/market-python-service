@@ -163,6 +163,7 @@ def serviceListingIndustriesICB(source: str):
 
 
 def serviceListingAllIndices(source: str):
+    import vnstock
 
     cacheKey = f"listing:{source}:indices"
 
@@ -170,9 +171,144 @@ def serviceListingAllIndices(source: str):
     if cached:
         return cached
 
+    data = list(vnstock.INDICES_MAP.keys())
+
+    cacheSet(cacheKey, data, CACHE_TTL)
+
+    return data
+
+
+def serviceListingIndicesByGroup(source: str, group: str):
+    import vnstock
+
+    cacheKey = f"listing:{source}:indices_by_group:{group}"
+
+    cached = cacheGet(cacheKey)
+    if cached:
+        return cached
+
+    if group not in vnstock.INDEX_GROUPS:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Invalid group. Available groups: {', '.join(vnstock.INDEX_GROUPS.keys())}"
+        )
+
+    data = list(vnstock.INDEX_GROUPS[group])
+
+    cacheSet(cacheKey, data, CACHE_TTL)
+
+    return data
+
+
+def serviceListingAllIndices(source: str):
+    import vnstock
+
+    cacheKey = f"listing:{source}:indices"
+
+    cached = cacheGet(cacheKey)
+    if cached:
+        return cached
+
+    data = list(vnstock.INDICES_MAP.keys())
+
+    cacheSet(cacheKey, data, CACHE_TTL)
+
+    return data
+
+
+def serviceListingAllFutureIndices(source: str):
+
+    cacheKey = f"listing:{source}:future_indices"
+
+    cached = cacheGet(cacheKey)
+    if cached:
+        return cached
+
     listing = get_listing(source)
 
-    df = listing.all_future_indices()
+    series = listing.all_future_indices()
+
+    data = normalize_data(series)
+
+    cacheSet(cacheKey, data, CACHE_TTL)
+
+    return data
+
+
+def serviceListingAllCoveredWarrant(source: str):
+
+    cacheKey = f"listing:{source}:covered_warrant"
+
+    cached = cacheGet(cacheKey)
+    if cached:
+        return cached
+
+    listing = get_listing(source)
+
+    series = listing.all_covered_warrant()
+
+    data = normalize_data(series)
+
+    cacheSet(cacheKey, data, CACHE_TTL)
+
+    return data
+
+
+def serviceListingAllBonds(source: str):
+
+    cacheKey = f"listing:{source}:bonds"
+
+    cached = cacheGet(cacheKey)
+    if cached:
+        return cached
+
+    listing = get_listing(source)
+
+    series = listing.all_bonds()
+
+    data = normalize_data(series)
+
+    cacheSet(cacheKey, data, CACHE_TTL)
+
+    return data
+
+
+def serviceListingAllGovernmentBonds(source: str):
+    if source.upper() == "KBS":
+        raise HTTPException(
+            status_code=400,
+            detail="KBS does not support government bonds. Use VCI source instead."
+        )
+
+    cacheKey = f"listing:{source}:government_bonds"
+
+    cached = cacheGet(cacheKey)
+    if cached:
+        return cached
+
+    listing = get_listing(source)
+
+    series = listing.all_government_bonds()
+
+    data = normalize_data(series)
+
+    cacheSet(cacheKey, data, CACHE_TTL)
+
+    return data
+
+
+def serviceListingSearchSymbolId(symbol: str):
+    from vnstock.explorer.msn.listing import Listing as MsnListing
+
+    cacheKey = f"listing:search_symbol_id:{symbol}"
+
+    cached = cacheGet(cacheKey)
+    if cached:
+        return cached
+
+    listing = MsnListing()
+
+    df = listing.search_symbol_id(symbol)
 
     data = normalize_data(df)
 

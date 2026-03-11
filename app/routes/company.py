@@ -19,7 +19,7 @@ from app.services.company import (
 VALID_SOURCES = {"KBS", "VCI"}
 
 router = APIRouter(
-    prefix="/company",
+    prefix="",
     tags=["Company"]
 )
 
@@ -49,11 +49,11 @@ def base_response(symbol: str, source: str, data):
     }
 
 
-def handle_request(service_func, symbol, source, api_key):
+def handle_request(service_func, symbol, source, api_key, **kwargs):
     symbol = symbol.upper()
     source = validate_source(source)
 
-    data = service_func(symbol, source)
+    data = service_func(symbol, source, **kwargs)
 
     return base_response(symbol, source, data)
 
@@ -183,45 +183,47 @@ def api_company_capital_history(
 def api_company_insider_trading(
     symbol: str = Query(...),
     source: str = Query("KBS"),
+    page: int = Query(1, ge=1),
+    page_size: int = Query(10, ge=1, le=100),
     x_api_key: str = Header(..., alias="X-API-Key")
 ):
-    return handle_request(service_company_insider_trading, symbol, source, x_api_key)
+    return handle_request(service_company_insider_trading, symbol, source, x_api_key, page=page, page_size=page_size)
 
 
 # =============================
-# REPORTS
+# REPORTS (VCI only)
 # =============================
 
 @router.get("/reports")
 def api_company_reports(
     symbol: str = Query(...),
-    source: str = Query("KBS"),
+    source: str = Query("VCI"),
     x_api_key: str = Header(..., alias="X-API-Key")
 ):
     return handle_request(service_company_reports, symbol, source, x_api_key)
 
 
 # =============================
-# TRADING STATS
+# TRADING STATS (VCI only)
 # =============================
 
 @router.get("/trading-stats")
 def api_company_trading_stats(
     symbol: str = Query(...),
-    source: str = Query("KBS"),
+    source: str = Query("VCI"),
     x_api_key: str = Header(..., alias="X-API-Key")
 ):
     return handle_request(service_company_trading_stats, symbol, source, x_api_key)
 
 
 # =============================
-# RATIO SUMMARY
+# RATIO SUMMARY (VCI only)
 # =============================
 
 @router.get("/ratio-summary")
 def api_company_ratio_summary(
     symbol: str = Query(...),
-    source: str = Query("KBS"),
+    source: str = Query("VCI"),
     x_api_key: str = Header(..., alias="X-API-Key")
 ):
     return handle_request(service_company_ratio_summary, symbol, source, x_api_key)
