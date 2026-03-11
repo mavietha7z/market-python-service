@@ -1,20 +1,17 @@
-from vnstock import Vnstock
-import pandas as pd
 import numpy as np
+import pandas as pd
+from vnstock import Vnstock
 from fastapi import HTTPException
 
 
 # ============================
 # Data Normalizer
 # ============================
-
 def normalize_data(data):
-
     if data is None:
         return None
 
     if isinstance(data, pd.DataFrame):
-
         df = data.replace({
             np.nan: None,
             pd.NaT: None,
@@ -25,13 +22,12 @@ def normalize_data(data):
         for col in df.columns:
             if pd.api.types.is_datetime64_any_dtype(df[col]):
                 df[col] = df[col].apply(
-                    lambda x: x.isoformat() if x else None
+                    lambda x: x.isoformat() if x is not None else None
                 )
 
         return df.to_dict(orient="records")
 
     if isinstance(data, pd.Series):
-
         series = data.replace({
             np.nan: None,
             pd.NaT: None,
@@ -50,66 +46,57 @@ def normalize_data(data):
 # ============================
 # VNStock Instance
 # ============================
-
 def get_stock(symbol: str, source: str):
-
     try:
         return Vnstock().stock(
             symbol=symbol.upper(),
             source=source
         )
 
-    except Exception as e:
+    except Exception as error:
         raise HTTPException(
             status_code=500,
-            detail=f"Cannot initialize vnstock: {str(e)}"
+            detail=f"{str(error)}"
         )
 
 
 # ============================
 # Generic Handler - calls through data_source
 # ============================
-
 def fetch_company_data(symbol: str, source: str, method: str, **kwargs):
-
     try:
-
         stock = get_stock(symbol, source)
-
         company = stock.company
-
         data_source = company.data_source
 
         if not hasattr(data_source, method):
             raise HTTPException(
                 status_code=400,
-                detail=f"Method '{method}' not supported for source '{source}'"
+                detail=f"Phương thức '{method}' không được hỗ trợ cho nguồn '{source}'"
             )
 
-        func = getattr(data_source, method)
+        functionObject = getattr(data_source, method)
 
         if kwargs:
-            data = func(**kwargs)
+            data = functionObject(**kwargs)
         else:
-            data = func()
+            data = functionObject()
 
         return normalize_data(data)
 
     except HTTPException:
         raise
 
-    except Exception as e:
-
+    except Exception as error:
         raise HTTPException(
             status_code=500,
-            detail=f"Error fetching company data: {str(e)}"
+            detail=f"Lỗi khi lấy dữ liệu công ty: {str(error)}"
         )
 
 
 # ============================
 # Service Functions
 # ============================
-
 def service_company_overview(symbol, source):
     return fetch_company_data(symbol, source, "overview")
 

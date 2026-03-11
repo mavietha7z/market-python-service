@@ -17,6 +17,7 @@ from app.services.company import (
     service_company_insider_trading,
 )
 
+DEFAULT_MULTI_SOURCE = "KBS"
 VALID_SOURCES = {"KBS", "VCI"}
 
 router = APIRouter(
@@ -28,19 +29,43 @@ router = APIRouter(
 # =============================
 # Helpers
 # =============================
-def validate_source(source: str) -> str:
-    source = source.upper()
+def error_response(status_code: int, message: str):
+    return JSONResponse(
+        status_code=status_code,
+        content={
+            "status": status_code,
+            "message": message
+        }
+    )
 
-    if source not in VALID_SOURCES:
-        return JSONResponse(
-            status_code=400,
-            content={
-                "status": 400,
-                "message": "Nguồn không hợp lệ. Các nguồn được hỗ trợ: " + ", ".join(VALID_SOURCES)
-            }
+
+def resolve_multi_source(source: str | None):
+    """
+    API hỗ trợ 2 nguồn:
+    - Không truyền source -> mặc định KBS
+    - Có truyền -> chỉ chấp nhận KBS hoặc VCI
+    """
+    if source is None or source == "":
+        return DEFAULT_MULTI_SOURCE
+
+    normalizedSource = source.upper()
+
+    if normalizedSource not in VALID_SOURCES:
+        return error_response(
+            400,
+            "Nguồn không hợp lệ. Các nguồn được hỗ trợ: KBS, VCI"
         )
 
-    return source
+    return normalizedSource
+
+
+def resolve_single_source(fixed_source: str):
+    """
+    API chỉ hỗ trợ 1 nguồn:
+    - Không cần nhận source từ client
+    - Luôn dùng nguồn cố định
+    """
+    return fixed_source.upper()
 
 
 def base_response(symbol: str, source: str, data):
@@ -52,13 +77,25 @@ def base_response(symbol: str, source: str, data):
     }
 
 
-def handle_request(service_func, symbol, source, api_key, **kwargs):
-    symbol = symbol.upper()
-    source = validate_source(source)
+def handle_request_multi_source(service_func, symbol, source, api_key, **kwargs):
+    normalizedSymbol = symbol.upper()
+    resolvedSource = resolve_multi_source(source)
 
-    data = service_func(symbol, source, **kwargs)
+    if isinstance(resolvedSource, JSONResponse):
+        return resolvedSource
 
-    return base_response(symbol, source, data)
+    data = service_func(normalizedSymbol, resolvedSource, **kwargs)
+
+    return base_response(normalizedSymbol, resolvedSource, data)
+
+
+def handle_request_single_source(service_func, symbol, fixed_source, api_key, **kwargs):
+    normalizedSymbol = symbol.upper()
+    resolvedSource = resolve_single_source(fixed_source)
+
+    data = service_func(normalizedSymbol, resolvedSource, **kwargs)
+
+    return base_response(normalizedSymbol, resolvedSource, data)
 
 
 # =============================
@@ -67,10 +104,15 @@ def handle_request(service_func, symbol, source, api_key, **kwargs):
 @router.get("/overview")
 def api_company_overview(
     symbol: str = Query(...),
-    source: str = Query("KBS"),
+    source: str | None = Query(None),
     x_api_key: str = Header(..., alias="X-API-Key")
 ):
-    return handle_request(service_company_overview, symbol, source, x_api_key)
+    return handle_request_multi_source(
+        service_company_overview,
+        symbol,
+        source,
+        x_api_key
+    )
 
 
 # =============================
@@ -79,10 +121,15 @@ def api_company_overview(
 @router.get("/shareholders")
 def api_company_shareholders(
     symbol: str = Query(...),
-    source: str = Query("KBS"),
+    source: str | None = Query(None),
     x_api_key: str = Header(..., alias="X-API-Key")
 ):
-    return handle_request(service_company_shareholders, symbol, source, x_api_key)
+    return handle_request_multi_source(
+        service_company_shareholders,
+        symbol,
+        source,
+        x_api_key
+    )
 
 
 # =============================
@@ -91,10 +138,15 @@ def api_company_shareholders(
 @router.get("/officers")
 def api_company_officers(
     symbol: str = Query(...),
-    source: str = Query("KBS"),
+    source: str | None = Query(None),
     x_api_key: str = Header(..., alias="X-API-Key")
 ):
-    return handle_request(service_company_officers, symbol, source, x_api_key)
+    return handle_request_multi_source(
+        service_company_officers,
+        symbol,
+        source,
+        x_api_key
+    )
 
 
 # =============================
@@ -103,10 +155,14 @@ def api_company_officers(
 @router.get("/subsidiaries")
 def api_company_subsidiaries(
     symbol: str = Query(...),
-    source: str = Query("KBS"),
     x_api_key: str = Header(..., alias="X-API-Key")
 ):
-    return handle_request(service_company_subsidiaries, symbol, source, x_api_key)
+    return handle_request_single_source(
+        service_company_subsidiaries,
+        symbol,
+        "KBS",
+        x_api_key
+    )
 
 
 # =============================
@@ -115,10 +171,15 @@ def api_company_subsidiaries(
 @router.get("/affiliate")
 def api_company_affiliate(
     symbol: str = Query(...),
-    source: str = Query("KBS"),
+    source: str | None = Query(None),
     x_api_key: str = Header(..., alias="X-API-Key")
 ):
-    return handle_request(service_company_affiliate, symbol, source, x_api_key)
+    return handle_request_multi_source(
+        service_company_affiliate,
+        symbol,
+        source,
+        x_api_key
+    )
 
 
 # =============================
@@ -127,10 +188,15 @@ def api_company_affiliate(
 @router.get("/news")
 def api_company_news(
     symbol: str = Query(...),
-    source: str = Query("KBS"),
+    source: str | None = Query(None),
     x_api_key: str = Header(..., alias="X-API-Key")
 ):
-    return handle_request(service_company_news, symbol, source, x_api_key)
+    return handle_request_multi_source(
+        service_company_news,
+        symbol,
+        source,
+        x_api_key
+    )
 
 
 # =============================
@@ -139,10 +205,15 @@ def api_company_news(
 @router.get("/events")
 def api_company_events(
     symbol: str = Query(...),
-    source: str = Query("KBS"),
+    source: str | None = Query(None),
     x_api_key: str = Header(..., alias="X-API-Key")
 ):
-    return handle_request(service_company_events, symbol, source, x_api_key)
+    return handle_request_multi_source(
+        service_company_events,
+        symbol,
+        source,
+        x_api_key
+    )
 
 
 # =============================
@@ -151,10 +222,14 @@ def api_company_events(
 @router.get("/ownership")
 def api_company_ownership(
     symbol: str = Query(...),
-    source: str = Query("KBS"),
     x_api_key: str = Header(..., alias="X-API-Key")
 ):
-    return handle_request(service_company_ownership, symbol, source, x_api_key)
+    return handle_request_single_source(
+        service_company_ownership,
+        symbol,
+        "KBS",
+        x_api_key
+    )
 
 
 # =============================
@@ -163,10 +238,14 @@ def api_company_ownership(
 @router.get("/capital-history")
 def api_company_capital_history(
     symbol: str = Query(...),
-    source: str = Query("KBS"),
     x_api_key: str = Header(..., alias="X-API-Key")
 ):
-    return handle_request(service_company_capital_history, symbol, source, x_api_key)
+    return handle_request_single_source(
+        service_company_capital_history,
+        symbol,
+        "KBS",
+        x_api_key
+    )
 
 
 # =============================
@@ -175,12 +254,18 @@ def api_company_capital_history(
 @router.get("/insider-trading")
 def api_company_insider_trading(
     symbol: str = Query(...),
-    source: str = Query("KBS"),
     page: int = Query(1, ge=1),
     page_size: int = Query(10, ge=1, le=100),
     x_api_key: str = Header(..., alias="X-API-Key")
 ):
-    return handle_request(service_company_insider_trading, symbol, source, x_api_key, page=page, page_size=page_size)
+    return handle_request_single_source(
+        service_company_insider_trading,
+        symbol,
+        "KBS",
+        x_api_key,
+        page=page,
+        page_size=page_size
+    )
 
 
 # =============================
@@ -189,10 +274,14 @@ def api_company_insider_trading(
 @router.get("/reports")
 def api_company_reports(
     symbol: str = Query(...),
-    source: str = Query("VCI"),
     x_api_key: str = Header(..., alias="X-API-Key")
 ):
-    return handle_request(service_company_reports, symbol, source, x_api_key)
+    return handle_request_single_source(
+        service_company_reports,
+        symbol,
+        "VCI",
+        x_api_key
+    )
 
 
 # =============================
@@ -201,10 +290,14 @@ def api_company_reports(
 @router.get("/trading-stats")
 def api_company_trading_stats(
     symbol: str = Query(...),
-    source: str = Query("VCI"),
     x_api_key: str = Header(..., alias="X-API-Key")
 ):
-    return handle_request(service_company_trading_stats, symbol, source, x_api_key)
+    return handle_request_single_source(
+        service_company_trading_stats,
+        symbol,
+        "VCI",
+        x_api_key
+    )
 
 
 # =============================
@@ -213,7 +306,11 @@ def api_company_trading_stats(
 @router.get("/ratio-summary")
 def api_company_ratio_summary(
     symbol: str = Query(...),
-    source: str = Query("VCI"),
     x_api_key: str = Header(..., alias="X-API-Key")
 ):
-    return handle_request(service_company_ratio_summary, symbol, source, x_api_key)
+    return handle_request_single_source(
+        service_company_ratio_summary,
+        symbol,
+        "VCI",
+        x_api_key
+    )
