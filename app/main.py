@@ -1,116 +1,56 @@
-import os
 from dotenv import load_dotenv
 
 load_dotenv()
 
-from fastapi import FastAPI, Header, HTTPException
+from fastapi import FastAPI
 from cachetools import TTLCache
+from app.middlewares.api_key import APIKeyMiddleware
 
-from app.core.auth import verify_api_key
 from app.routes.price import router as price_router
 from app.routes.listing import router as listing_router
 from app.routes.company import router as company_router
-
-from app.middlewares.api_key import APIKeyMiddleware
 from app.routes.listing import router as listing_router
-
-
-
 
 # ==============================
 # FastAPI App
 # ==============================
-
 app = FastAPI(
-    title="Market Python Service",
     version="1.0.0",
-    description="Vietnam Stock Market Data API powered by vnstock"
+    title="API Chứng khoán Việt Nam - vnstock",
+    description="API cung cấp dữ liệu chứng khoán Việt Nam từ các nguồn như KBS, VCI. Hỗ trợ dữ liệu lịch sử, giá intraday, độ sâu thị trường, tin tức công ty, sự kiện và nhiều hơn nữa."
 )
 
-app.add_middleware(APIKeyMiddleware)
+
 
 # ==============================
 # Cache RAM
 # ==============================
-
 cache = TTLCache(
     maxsize=1000,  # số request cache
     ttl=300        # 5 phút
 )
 
-# ==============================
-# Supported Data Sources
-# ==============================
-
-VALID_SOURCES = {"KBS", "VCI"}
 
 # ==============================
-# Helper Functions
+# System Endpoints
 # ==============================
-
-def validate_source(source: str) -> str:
-    """
-    Validate source parameter
-    """
-    source = source.upper()
-
-    if source not in VALID_SOURCES:
-        raise HTTPException(
-            status_code=400,
-            detail=f"Invalid source. Supported sources: {', '.join(VALID_SOURCES)}"
-        )
-
-    return source
+@app.get("/")
+def root():
+    return {
+        "version": "1.0.0",
+        "status": "running",
+        "service": "API Chứng khoán Việt Nam - vnstock"
+    }
 
 
-def normalize_data(data):
-    """
-    Convert pandas DataFrame/Series → JSON serializable
-    """
-    import pandas as pd
-    import numpy as np
-
-    if data is None:
-        return None
-
-    if isinstance(data, pd.DataFrame):
-
-        df = data.replace({
-            np.nan: None,
-            pd.NaT: None,
-            np.inf: None,
-            -np.inf: None
-        })
-
-        for col in df.columns:
-            if pd.api.types.is_datetime64_any_dtype(df[col]):
-                df[col] = df[col].apply(
-                    lambda x: x.isoformat() if x else None
-                )
-
-        return df.to_dict(orient="records")
-
-    if isinstance(data, pd.Series):
-
-        series = data.replace({
-            np.nan: None,
-            pd.NaT: None,
-            np.inf: None,
-            -np.inf: None
-        })
-
-        return series.to_dict()
-
-    if isinstance(data, (dict, list)):
-        return data
-
-    return data
-
+# ==============================
+# Middleware
+# ==============================
+app.add_middleware(APIKeyMiddleware)
 
 # ==============================
 # Routers
 # ==============================
-
 app.include_router(
     company_router,
     prefix="/api/v1/company",
@@ -128,24 +68,3 @@ app.include_router(
     prefix="/api/v1/price",
     tags=["Price"]
 )
-
-# ==============================
-# System Endpoints
-# ==============================
-
-@app.get("/")
-def root():
-    return {
-        "service": "Market Python Service",
-        "version": "1.0.0",
-        "status": "running"
-    }
-
-
-@app.get("/health")
-def health(api_key: str = Header(..., alias="X-API-Key")):
-    verify_api_key(api_key)
-
-    return {
-        "status": "ok"
-    }

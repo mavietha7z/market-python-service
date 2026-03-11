@@ -6,17 +6,10 @@ load_dotenv()
 # ========================
 # API KEYS
 # ========================
-
-API_KEYS = os.getenv("API_KEYS", "").split(",")
+API_KEY = os.getenv("API_KEY", "")
 
 # ========================
 # CACHE
 # ========================
-
 CACHE_TTL = int(os.getenv("CACHE_TTL", 300))
 
-# ========================
-# DATA SOURCES
-# ========================
-
-VALID_SOURCES = {"KBS", "VCI"}

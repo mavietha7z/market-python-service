@@ -1,31 +1,42 @@
-from fastapi import Request, HTTPException
+from fastapi import Request
+from fastapi.responses import JSONResponse
 from starlette.middleware.base import BaseHTTPMiddleware
-from app.core.auth import verify_api_key
+
+from app.core.config import API_KEY
+
+EXCLUDED_PATHS = {
+    "/",
+    "/docs",
+    "/redoc",
+    "/openapi.json"
+}
 
 
 class APIKeyMiddleware(BaseHTTPMiddleware):
 
     async def dispatch(self, request: Request, call_next):
-
-        # Bỏ qua docs
-        if request.url.path in [
-            "/docs",
-            "/openapi.json",
-            "/redoc",
-            "/"
-        ]:
+        if request.url.path in EXCLUDED_PATHS:
             return await call_next(request)
 
         api_key = request.headers.get("X-API-Key")
 
         if not api_key:
-            raise HTTPException(
+            return JSONResponse(
                 status_code=401,
-                detail="Missing API Key"
+                content={
+                    "status": 401,
+                    "message": "Vui lòng cung cấp apikey"
+                }
             )
 
-        verify_api_key(api_key)
+        if api_key not in API_KEY:
+            return JSONResponse(
+                status_code=401,
+                content={
+                    "status": 401,
+                    "message": "Apikey không hợp lệ"
+                }
+            )
+        
 
-        response = await call_next(request)
-
-        return response
+        return await call_next(request)
