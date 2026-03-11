@@ -6,8 +6,10 @@ load_dotenv()
 from fastapi import FastAPI, Header, HTTPException
 from cachetools import TTLCache
 
-from app.routes.company import router as company_router
 from app.core.auth import verify_api_key
+from app.routes.price import router as price_router
+from app.routes.listing import router as listing_router
+from app.routes.company import router as company_router
 
 from app.middlewares.api_key import APIKeyMiddleware
 from app.routes.listing import router as listing_router
@@ -119,6 +121,12 @@ app.include_router(
     listing_router,
     prefix="/api/v1/listing",
     tags=["Listing"]
+)
+
+app.include_router(
+    price_router,
+    prefix="/api/v1/price",
+    tags=["Price"]
 )
 
 # ==============================
