@@ -1,56 +1,66 @@
-from vnstock import Quote
-import pandas as pd
+from datetime import datetime, timedelta
+
 import numpy as np
-from fastapi import HTTPException, Query
-from app.services.cache import cacheGet, cacheSet
+import pandas as pd
+from fastapi import HTTPException
+from vnstock import Quote, Vnstock
+
 from app.core.config import CACHE_TTL
+from app.services.cache import cacheGet, cacheSet
+
+
+# ============================
+# Constants
+# ============================
+SUPPORTED_SOURCES = {"KBS", "VCI"}
+DEFAULT_HISTORY_LOOKBACK_DAYS = 30
 
 
 # ============================
 # Data Normalizer
 # ============================
-
 def normalize_data(data):
-
     if data is None:
         return None
 
     if isinstance(data, pd.DataFrame):
-
-        df = data.replace({
+        normalizedDataFrame = data.replace({
             np.nan: None,
             pd.NaT: None,
             np.inf: None,
             -np.inf: None
         })
 
-        for col in df.columns:
-            if pd.api.types.is_datetime64_any_dtype(df[col]):
-                df[col] = df[col].apply(
-                    lambda x: x.isoformat() if x else None
+        for columnName in normalizedDataFrame.columns:
+            if pd.api.types.is_datetime64_any_dtype(normalizedDataFrame[columnName]):
+                normalizedDataFrame[columnName] = normalizedDataFrame[columnName].apply(
+                    lambda value: value.isoformat() if value is not None else None
                 )
 
-        records = df.to_dict(orient="records")
+        records = normalizedDataFrame.to_dict(orient="records")
 
-        if hasattr(data, 'name') and data.name:
+        if hasattr(data, "name") and getattr(data, "name", None):
             return {
                 "name": data.name,
-                "category": data.category if hasattr(data, 'category') else None,
+                "category": getattr(data, "category", None),
                 "data": records
             }
 
         return records
 
     if isinstance(data, pd.Series):
-
-        series = data.replace({
+        normalizedSeries = data.replace({
             np.nan: None,
             pd.NaT: None,
             np.inf: None,
             -np.inf: None
         })
 
-        return series.to_dict()
+        normalizedSeries = normalizedSeries.apply(
+            lambda value: value.isoformat() if hasattr(value, "isoformat") and value is not None else value
+        )
+
+        return normalizedSeries.to_dict()
 
     if isinstance(data, (dict, list)):
         return data
@@ -59,191 +69,310 @@ def normalize_data(data):
 
 
 # ============================
-# Quote Instance
+# Error Helpers
 # ============================
-
-def get_quote(symbol: str, source: str):
-    return Quote(symbol=symbol, source=source)
+def raise_http_error(status_code: int, message: str):
+    raise HTTPException(
+        status_code=status_code,
+        detail=message
+    )
 
 
 # ============================
-# Service Functions
+# Normalizers
 # ============================
+def normalize_source(source: str) -> str:
+    normalizedSource = source.upper().strip()
 
-def servicePriceHistory(
-    symbol: str,
-    source: str,
-    start: str = None,
-    end: str = None,
-    length: str = None,
-    interval: str = "1D"
-):
-    cacheKey = f"price:{source}:{symbol}:history:{start}:{end}:{length}:{interval}"
-
-    cached = cacheGet(cacheKey)
-    if cached:
-        return cached
-
-    quote = get_quote(symbol, source)
-
-    if length:
-        df = quote.history(length=length, interval=interval)
-    elif start and end:
-        df = quote.history(start=start, end=end, interval=interval)
-    else:
-        df = quote.history(length="1M", interval=interval)
-
-    data = normalize_data(df)
-
-    cacheSet(cacheKey, data, CACHE_TTL)
-
-    return data
-
-
-def servicePriceIntraday(
-    symbol: str,
-    source: str,
-    page_size: int = 100
-):
-    cacheKey = f"price:{source}:{symbol}:intraday:{page_size}"
-
-    cached = cacheGet(cacheKey)
-    if cached:
-        return cached
-
-    quote = get_quote(symbol, source)
-
-    df = quote.intraday(page_size=page_size)
-
-    data = normalize_data(df)
-
-    cacheSet(cacheKey, data, CACHE_TTL)
-
-    return data
-
-
-def servicePriceDepth(
-    symbol: str,
-    source: str
-):
-    if source.upper() == "KBS":
-        raise HTTPException(
-            status_code=400,
-            detail="KBS does not support price_depth. Use VCI source instead."
+    if normalizedSource not in SUPPORTED_SOURCES:
+        raise_http_error(
+            400,
+            "Nguồn không hợp lệ. Các nguồn được hỗ trợ: KBS, VCI"
         )
 
-    cacheKey = f"price:{source}:{symbol}:depth"
+    return normalizedSource
 
-    cached = cacheGet(cacheKey)
-    if cached:
-        return cached
 
-    quote = get_quote(symbol, source)
+def normalize_symbol(symbol: str) -> str:
+    return symbol.upper().strip()
 
-    df = quote.price_depth()
 
-    data = normalize_data(df)
+def normalize_interval(interval: str) -> str:
+    return interval.strip()
 
-    cacheSet(cacheKey, data, CACHE_TTL)
+
+# ============================
+# Cache Helpers
+# ============================
+def get_cache_value(cache_key: str):
+    cachedValue = cacheGet(cache_key)
+
+    if cachedValue is not None:
+        return cachedValue
+
+    return None
+
+
+def get_or_set_cache(cache_key: str, fetch_function):
+    cachedValue = get_cache_value(cache_key)
+    if cachedValue is not None:
+        return cachedValue
+
+    data = fetch_function()
+    cacheSet(cache_key, data, CACHE_TTL)
 
     return data
 
 
 # ============================
-# International Assets
+# Quote / Date Helpers
 # ============================
+def get_quote(symbol: str, source: str):
+    normalizedSymbol = normalize_symbol(symbol)
+    normalizedSource = normalize_source(source)
 
-def serviceFxHistory(
-    symbol: str,
-    source: str = "MSN",
-    start: str = None,
-    end: str = None,
-    interval: str = "1D"
-):
-    from vnstock import Vnstock
+    try:
+        return Quote(symbol=normalizedSymbol, source=normalizedSource)
+    except Exception as error:
+        raise_http_error(
+            500,
+            f"Không thể khởi tạo Quote cho mã '{normalizedSymbol}' với nguồn '{normalizedSource}': {str(error)}"
+        )
 
-    cacheKey = f"fx:{source}:{symbol}:history:{start}:{end}:{interval}"
 
-    cached = cacheGet(cacheKey)
-    if cached:
-        return cached
+def get_default_date_range():
+    endDate = datetime.now()
+    startDate = endDate - timedelta(days=DEFAULT_HISTORY_LOOKBACK_DAYS)
 
-    fx = Vnstock().fx(symbol=symbol, source=source)
+    return (
+        startDate.strftime("%Y-%m-%d"),
+        endDate.strftime("%Y-%m-%d")
+    )
 
+
+def resolve_history_date_range(start: str | None, end: str | None):
     if start and end:
-        df = fx.quote.history(start=start, end=end)
-    else:
-        from datetime import datetime, timedelta
-        end_date = datetime.now()
-        start_date = end_date - timedelta(days=30)
-        df = fx.quote.history(start=start_date.strftime('%Y-%m-%d'), end=end_date.strftime('%Y-%m-%d'))
+        return start, end
 
-    data = normalize_data(df)
-
-    cacheSet(cacheKey, data, CACHE_TTL)
-
-    return data
+    return get_default_date_range()
 
 
-def serviceCryptoHistory(
+def build_history_cache_key(asset_type: str, source: str, symbol: str, start: str, end: str, interval: str):
+    return f"{asset_type}:{source}:{symbol}:history:{start}:{end}:{interval}"
+
+
+# ============================
+# Stock Price Services
+# ============================
+def service_price_stock_history(
     symbol: str,
-    source: str = "MSN",
-    start: str = None,
-    end: str = None,
-    interval: str = "1D"
+    source: str,
+    start: str,
+    end: str,
+    interval: str
 ):
-    from vnstock import Vnstock
+    normalizedSymbol = normalize_symbol(symbol)
+    normalizedSource = normalize_source(source)
+    normalizedInterval = normalize_interval(interval)
 
-    cacheKey = f"crypto:{source}:{symbol}:history:{start}:{end}:{interval}"
+    cacheKey = build_history_cache_key(
+        asset_type="price",
+        source=normalizedSource,
+        symbol=normalizedSymbol,
+        start=start,
+        end=end,
+        interval=normalizedInterval
+    )
 
-    cached = cacheGet(cacheKey)
-    if cached:
-        return cached
+    def fetch_data():
+        quoteInstance = get_quote(normalizedSymbol, normalizedSource)
 
-    crypto = Vnstock().crypto(symbol=symbol, source=source)
+        try:
+            rawData = quoteInstance.history(
+                start=start,
+                end=end,
+                interval=normalizedInterval
+            )
+            return normalize_data(rawData)
+        except Exception as error:
+            raise_http_error(
+                500,
+                f"Lỗi khi lấy lịch sử giá cho mã '{normalizedSymbol}': {str(error)}"
+            )
 
-    if start and end:
-        df = crypto.quote.history(start=start, end=end)
-    else:
-        from datetime import datetime, timedelta
-        end_date = datetime.now()
-        start_date = end_date - timedelta(days=30)
-        df = crypto.quote.history(start=start_date.strftime('%Y-%m-%d'), end=end_date.strftime('%Y-%m-%d'))
-
-    data = normalize_data(df)
-
-    cacheSet(cacheKey, data, CACHE_TTL)
-
-    return data
+    return get_or_set_cache(cacheKey, fetch_data)
 
 
-def serviceWorldIndexHistory(
+def service_price_stock_intraday(
     symbol: str,
-    source: str = "MSN",
-    start: str = None,
-    end: str = None,
-    interval: str = "1D"
+    source: str,
+    page_size: int = 100,
+    get_all: bool = False,
+    last_time: str | None = None,
+    last_time_format: str = "iso"
 ):
-    from vnstock import Vnstock
+    normalizedSymbol = normalize_symbol(symbol)
+    normalizedSource = normalize_source(source)
+    normalizedLastTimeFormat = last_time_format.strip().lower()
 
-    cacheKey = f"world_index:{source}:{symbol}:history:{start}:{end}:{interval}"
+    cacheKey = (
+        f"price:{normalizedSource}:{normalizedSymbol}:intraday:"
+        f"{page_size}:{get_all}:{last_time}:{normalizedLastTimeFormat}"
+    )
 
-    cached = cacheGet(cacheKey)
-    if cached:
-        return cached
+    def fetch_data():
+        quoteInstance = get_quote(normalizedSymbol, normalizedSource)
 
-    index = Vnstock().world_index(symbol=symbol, source=source)
+        try:
+            rawData = quoteInstance.intraday(
+                page_size=page_size,
+                get_all=get_all,
+                last_time=last_time,
+                last_time_format=normalizedLastTimeFormat
+            )
+            return normalize_data(rawData)
+        except TypeError:
+            # fallback nếu phiên bản vnstock hiện tại không hỗ trợ đầy đủ các tham số mới
+            try:
+                rawData = quoteInstance.intraday(page_size=page_size)
+                return normalize_data(rawData)
+            except Exception as error:
+                raise_http_error(
+                    500,
+                    f"Lỗi khi lấy dữ liệu intraday cho mã '{normalizedSymbol}': {str(error)}"
+                )
+        except Exception as error:
+            raise_http_error(
+                500,
+                f"Lỗi khi lấy dữ liệu intraday cho mã '{normalizedSymbol}': {str(error)}"
+            )
 
-    if start and end:
-        df = index.quote.history(start=start, end=end)
-    else:
-        from datetime import datetime, timedelta
-        end_date = datetime.now()
-        start_date = end_date - timedelta(days=30)
-        df = index.quote.history(start=start_date.strftime('%Y-%m-%d'), end=end_date.strftime('%Y-%m-%d'))
+    return get_or_set_cache(cacheKey, fetch_data)
 
-    data = normalize_data(df)
 
-    cacheSet(cacheKey, data, CACHE_TTL)
+# ============================
+# International Asset Helpers
+# ============================
+def fetch_external_history_data(
+    asset_name: str,
+    asset_factory,
+    symbol: str,
+    source: str,
+    start: str | None,
+    end: str | None,
+    interval: str
+):
+    normalizedSymbol = normalize_symbol(symbol)
+    normalizedSource = normalize_source(source)
+    normalizedInterval = normalize_interval(interval)
+    resolvedStart, resolvedEnd = resolve_history_date_range(start, end)
 
-    return data
+    cacheKey = build_history_cache_key(
+        asset_type=asset_name,
+        source=normalizedSource,
+        symbol=normalizedSymbol,
+        start=resolvedStart,
+        end=resolvedEnd,
+        interval=normalizedInterval
+    )
+
+    def fetch_data():
+        try:
+            assetInstance = asset_factory(normalizedSymbol, normalizedSource)
+
+            rawData = assetInstance.quote.history(
+                start=resolvedStart,
+                end=resolvedEnd,
+                interval=normalizedInterval
+            )
+
+            return normalize_data(rawData)
+        except TypeError:
+            # fallback nếu quote.history không hỗ trợ interval ở asset đó
+            try:
+                assetInstance = asset_factory(normalizedSymbol, normalizedSource)
+
+                rawData = assetInstance.quote.history(
+                    start=resolvedStart,
+                    end=resolvedEnd
+                )
+
+                return normalize_data(rawData)
+            except Exception as error:
+                raise_http_error(
+                    500,
+                    f"Lỗi khi lấy dữ liệu {asset_name} cho mã '{normalizedSymbol}': {str(error)}"
+                )
+        except Exception as error:
+            raise_http_error(
+                500,
+                f"Lỗi khi lấy dữ liệu {asset_name} cho mã '{normalizedSymbol}': {str(error)}"
+            )
+
+    return get_or_set_cache(cacheKey, fetch_data)
+
+
+# ============================
+# International Asset Services
+# ============================
+def service_price_fx_history(
+    symbol: str,
+    source: str,
+    start: str,
+    end: str,
+    interval: str
+):
+    return fetch_external_history_data(
+        asset_name="fx",
+        asset_factory=lambda normalizedSymbol, normalizedSource: Vnstock().fx(
+            symbol=normalizedSymbol,
+            source=normalizedSource
+        ),
+        symbol=symbol,
+        source=source,
+        start=start,
+        end=end,
+        interval=interval
+    )
+
+
+def service_price_crypto_history(
+    symbol: str,
+    source: str,
+    start: str,
+    end: str,
+    interval: str
+):
+    return fetch_external_history_data(
+        asset_name="crypto",
+        asset_factory=lambda normalizedSymbol, normalizedSource: Vnstock().crypto(
+            symbol=normalizedSymbol,
+            source=normalizedSource
+        ),
+        symbol=symbol,
+        source=source,
+        start=start,
+        end=end,
+        interval=interval
+    )
+
+
+def service_price_world_index_history(
+    symbol: str,
+    source: str,
+    start: str,
+    end: str,
+    interval: str
+):
+    return fetch_external_history_data(
+        asset_name="world_index",
+        asset_factory=lambda normalizedSymbol, normalizedSource: Vnstock().world_index(
+            symbol=normalizedSymbol,
+            source=normalizedSource
+        ),
+        symbol=symbol,
+        source=source,
+        start=start,
+        end=end,
+        interval=interval
+    )

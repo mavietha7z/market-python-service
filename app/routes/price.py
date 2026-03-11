@@ -1,15 +1,17 @@
-from fastapi import APIRouter, Query, Header, HTTPException
+from fastapi.responses import JSONResponse
+from fastapi import APIRouter, Query, Header
 
 from app.services.price import (
-    servicePriceHistory,
-    servicePriceIntraday,
-    servicePriceDepth,
-    serviceFxHistory,
-    serviceCryptoHistory,
-    serviceWorldIndexHistory
+    service_price_fx_history,
+    service_price_stock_history,
+    service_price_crypto_history,
+    service_price_stock_intraday,
+    service_price_world_index_history
 )
 
-VALID_SOURCES = {"KBS", "VCI"}
+DEFAULT_STOCK_SOURCE = "VCI"
+VALID_STOCK_SOURCES = {"KBS", "VCI"}
+FIXED_EXTERNAL_SOURCE = "MSN"
 
 router = APIRouter(
     prefix="",
@@ -20,161 +22,198 @@ router = APIRouter(
 # =============================
 # Helpers
 # =============================
+def error_response(status_code: int, message: str):
+    return JSONResponse(
+        status_code=status_code,
+        content={
+            "status": status_code,
+            "message": message
+        }
+    )
 
-def validate_source(source: str) -> str:
-    source = source.upper()
 
-    if source not in VALID_SOURCES:
-        raise HTTPException(
-            status_code=400,
-            detail=f"Invalid source. Supported sources: {', '.join(VALID_SOURCES)}"
+def resolve_stock_source(source: str | None):
+    """
+    API cổ phiếu hỗ trợ 2 nguồn:
+    - Không truyền source -> mặc định VCI
+    - Có truyền -> chỉ chấp nhận KBS hoặc VCI
+    """
+    if source is None or source == "":
+        return DEFAULT_STOCK_SOURCE
+
+    normalizedSource = source.upper()
+
+    if normalizedSource not in VALID_STOCK_SOURCES:
+        return error_response(
+            400,
+            "Nguồn không hợp lệ. Các nguồn được hỗ trợ: KBS, VCI"
         )
 
-    return source
+    return normalizedSource
 
 
-def base_response(source: str, data, symbol: str = None):
-    response = {
-        "status": "success",
+def resolve_fixed_source(source: str | None, fixed_source: str):
+    """
+    API chỉ hỗ trợ 1 nguồn cố định.
+    - Không truyền -> dùng fixed_source
+    - Có truyền đúng fixed_source -> chấp nhận
+    - Có truyền khác -> báo lỗi
+    """
+    if source is None or source == "":
+        return fixed_source
+
+    normalizedSource = source.upper()
+    normalizedFixedSource = fixed_source.upper()
+
+    if normalizedSource != normalizedFixedSource:
+        return error_response(
+            400,
+            f"API này chỉ hỗ trợ nguồn {normalizedFixedSource}"
+        )
+
+    return normalizedFixedSource
+
+
+def base_response(symbol: str, source: str, data):
+    return {
+        "status": 200,
         "source": source,
+        "symbol": symbol,
         "data": data
     }
-    if symbol:
-        response["symbol"] = symbol
-    return response
 
+
+def handle_request_stock_source(service_func, symbol, source, api_key, **kwargs):
+    normalizedSymbol = symbol.upper()
+    resolvedSource = resolve_stock_source(source)
+
+    if isinstance(resolvedSource, JSONResponse):
+        return resolvedSource
+
+    data = service_func(normalizedSymbol, resolvedSource, **kwargs)
+
+    return base_response(normalizedSymbol, resolvedSource, data)
+
+
+def handle_request_fixed_source(service_func, symbol, source, fixed_source, api_key, **kwargs):
+    normalizedSymbol = symbol.upper()
+    resolvedSource = resolve_fixed_source(source, fixed_source)
+
+    if isinstance(resolvedSource, JSONResponse):
+        return resolvedSource
+
+    data = service_func(normalizedSymbol, resolvedSource, **kwargs)
+
+    return base_response(normalizedSymbol, resolvedSource, data)
 
 # =============================
-# HISTORY (OHLCV)
+# Giá lịch sử (OHLCV)
 # =============================
-
 @router.get("/history")
-def routePriceHistory(
+def api_price_history(
     symbol: str = Query(..., description="VCI, FPT, VNINDEX..."),
-    source: str = Query("KBS"),
-    start: str = Query(None, description="2024-01-01"),
-    end: str = Query(None, description="2024-05-25"),
-    length: str = Query(None, description="1M, 3M, 1Y..."),
-    interval: str = Query("1D", description="1m, 5m, 15m, 30m, 1H, 1D, 1W, 1M"),
+    source: str | None = Query(None),
+    start: str = Query(..., description="2024-01-01"),
+    end: str = Query(..., description="2024-05-25"),
+    interval: str = Query(..., description="1m, 5m, 15m, 30m, 1H, 1D, 1W, 1M"),
     x_api_key: str = Header(..., alias="X-API-Key")
 ):
-    source = validate_source(source)
-
-    data = servicePriceHistory(
-        symbol=symbol,
-        source=source,
+    return handle_request_stock_source(
+        service_price_stock_history,
+        symbol,
+        source,
+        x_api_key,
         start=start,
         end=end,
-        length=length,
         interval=interval
     )
 
-    return base_response(source, data, symbol)
-
-
-# =============================
-# INTRADAY
-# =============================
 
 @router.get("/intraday")
-def routePriceIntraday(
+def api_price_intraday(
     symbol: str = Query(..., description="VCI, FPT..."),
-    source: str = Query("KBS"),
+    source: str | None = Query(None),
     page_size: int = Query(100, ge=1, le=1000),
+    get_all: bool = Query(False, description="Lấy tất cả dữ liệu khớp lệnh (cẩn thận với tham số này)"),
+    last_time: str = Query(None, description="str/int/float - thời điểm cuối cùng đã có dữ liệu (dùng để phân trang, lấy dữ liệu mới hơn)"),
+    last_time_format: str = Query("iso", description="Định dạng của last_time (iso hoặc unix)"),
     x_api_key: str = Header(..., alias="X-API-Key")
 ):
-    source = validate_source(source)
-
-    data = servicePriceIntraday(
-        symbol=symbol,
-        source=source,
-        page_size=page_size
+    return handle_request_stock_source(
+        service_price_stock_intraday,
+        symbol,
+        source,
+        x_api_key,
+        page_size=page_size,
+        get_all=get_all,
+        last_time=last_time,
+        last_time_format=last_time_format
     )
 
-    return base_response(source, data, symbol)
-
 
 # =============================
-# PRICE DEPTH
+# Forex (FX)
 # =============================
-
-@router.get("/depth")
-def routePriceDepth(
-    symbol: str = Query(..., description="VCI, FPT..."),
-    source: str = Query("KBS"),
-    x_api_key: str = Header(..., alias="X-API-Key")
-):
-    source = validate_source(source)
-
-    data = servicePriceDepth(
-        symbol=symbol,
-        source=source
-    )
-
-    return base_response(source, data, symbol)
-
-
-# =============================
-# FOREX HISTORY
-# =============================
-
 @router.get("/fx/history")
-def routeFxHistory(
-    symbol: str = Query(..., description="JPYVND, USDVND..."),
-    source: str = Query("MSN"),
-    start: str = Query(None, description="2024-01-01"),
-    end: str = Query(None, description="2024-05-25"),
+def api_price_fx_history(
+    symbol: str = Query(..., description="USDVND, JPYVND, AUDVND..."),
+    source: str | None = Query(None, description="Chỉ hỗ trợ MSN"),
+    start: str = Query(..., description="2024-01-01"),
+    end: str = Query(..., description="2024-05-25"),
+    interval: str = Query("1D", description="Chỉ hỗ trợ dữ liệu hàng ngày cho forex"),
     x_api_key: str = Header(..., alias="X-API-Key")
 ):
-    data = serviceFxHistory(
-        symbol=symbol,
-        source=source,
+    return handle_request_fixed_source(
+        service_price_fx_history,
+        symbol,
+        source,
+        "MSN",
+        x_api_key,
         start=start,
-        end=end
-    )
+        end=end,
+        interval=interval
+    )  
 
-    return base_response(source, data, symbol)
-
-
-# =============================
-# CRYPTO HISTORY
-# =============================
 
 @router.get("/crypto/history")
-def routeCryptoHistory(
-    symbol: str = Query(..., description="BTC, ETH..."),
-    source: str = Query("MSN"),
-    start: str = Query(None, description="2024-01-01"),
-    end: str = Query(None, description="2024-05-25"),
+def api_price_crypto_history(
+    symbol: str = Query(..., description="BTC, ETH, USDT, USDC, BNB..."),
+    source: str | None = Query(None, description="Chỉ hỗ trợ MSN"),
+    start: str = Query(..., description="2024-01-01"),
+    end: str = Query(..., description="2024-05-25"),
+    interval: str = Query("1D", description="Chỉ hỗ trợ dữ liệu hàng ngày cho crypto"),
     x_api_key: str = Header(..., alias="X-API-Key")
 ):
-    data = serviceCryptoHistory(
-        symbol=symbol,
-        source=source,
+    return handle_request_fixed_source(
+        service_price_crypto_history,
+        symbol,
+        source,
+        "MSN",
+        x_api_key,
         start=start,
-        end=end
+        end=end,
+        interval=interval
     )
 
-    return base_response(source, data, symbol)
-
-
 # =============================
-# WORLD INDEX HISTORY
+# Chỉ số quốc tế
 # =============================
-
 @router.get("/world-index/history")
-def routeWorldIndexHistory(
+def api_price_world_index_history(
     symbol: str = Query(..., description="DJI, SPX, N225, IXIC, HSI..."),
-    source: str = Query("MSN"),
-    start: str = Query(None, description="2024-01-01"),
-    end: str = Query(None, description="2024-05-25"),
+    source: str | None = Query(None, description="Chỉ hỗ trợ MSN"),
+    start: str = Query(..., description="2024-01-01"),
+    end: str = Query(..., description="2024-05-25"),
+    interval: str = Query("1D", description="Chỉ hỗ trợ dữ liệu hàng ngày cho chỉ số quốc tế"),
     x_api_key: str = Header(..., alias="X-API-Key")
 ):
-    data = serviceWorldIndexHistory(
-        symbol=symbol,
-        source=source,
+    return handle_request_fixed_source(
+        service_price_world_index_history,
+        symbol,
+        source,
+        "MSN",
+        x_api_key,
         start=start,
-        end=end
+        end=end,
+        interval=interval
     )
-
-    return base_response(source, data, symbol)
