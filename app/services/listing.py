@@ -1,16 +1,14 @@
-from vnstock import Listing
-import pandas as pd
 import numpy as np
+import pandas as pd
+from vnstock import Listing
 from fastapi import HTTPException
-from app.core.cache import cache
-from app.services.cache import cacheGet, cacheSet
 from app.core.config import CACHE_TTL
+from app.services.cache import cacheGet, cacheSet
 
 
 # ============================
 # Data Normalizer
 # ============================
-
 def normalize_data(data):
 
     if data is None:
@@ -62,7 +60,7 @@ def get_listing(source: str):
 # Service Functions
 # ============================
 
-def serviceListingAllSymbols(source: str):
+def service_listing_all_symbols(source: str):
 
     cacheKey = f"listing:{source}:all_symbols"
 
@@ -81,7 +79,7 @@ def serviceListingAllSymbols(source: str):
     return data
 
 
-def serviceListingSymbolsByExchange(source: str, exchange: str):
+def service_listing_symbols_by_exchange(source: str, exchange: str):
 
     cacheKey = f"listing:{source}:exchange:{exchange}"
 
@@ -100,7 +98,7 @@ def serviceListingSymbolsByExchange(source: str, exchange: str):
     return data
 
 
-def serviceListingSymbolsByGroup(source: str, group: str):
+def service_listing_symbols_by_group(source: str, group: str):
 
     cacheKey = f"listing:{source}:group:{group}"
 
@@ -119,7 +117,7 @@ def serviceListingSymbolsByGroup(source: str, group: str):
     return data
 
 
-def serviceListingSymbolsByIndustries(source: str):
+def service_listing_symbols_by_industries(source: str):
 
     cacheKey = f"listing:{source}:industries"
 
@@ -138,7 +136,7 @@ def serviceListingSymbolsByIndustries(source: str):
     return data
 
 
-def serviceListingIndustriesICB(source: str):
+def service_listing_industries_icb(source: str):
     if source.upper() == "KBS":
         raise HTTPException(
             status_code=400,
@@ -162,7 +160,7 @@ def serviceListingIndustriesICB(source: str):
     return data
 
 
-def serviceListingAllIndices(source: str):
+def service_listing_all_indices(source: str):
     import vnstock
 
     cacheKey = f"listing:{source}:indices"
@@ -178,7 +176,7 @@ def serviceListingAllIndices(source: str):
     return data
 
 
-def serviceListingIndicesByGroup(source: str, group: str):
+def service_listing_indices_by_group(source: str, group: str):
     import vnstock
 
     cacheKey = f"listing:{source}:indices_by_group:{group}"
@@ -200,7 +198,7 @@ def serviceListingIndicesByGroup(source: str, group: str):
     return data
 
 
-def serviceListingAllIndices(source: str):
+def service_listing_all_indices(source: str):
     import vnstock
 
     cacheKey = f"listing:{source}:indices"
@@ -216,88 +214,8 @@ def serviceListingAllIndices(source: str):
     return data
 
 
-def serviceListingAllFutureIndices(source: str):
 
-    cacheKey = f"listing:{source}:future_indices"
-
-    cached = cacheGet(cacheKey)
-    if cached:
-        return cached
-
-    listing = get_listing(source)
-
-    series = listing.all_future_indices()
-
-    data = normalize_data(series)
-
-    cacheSet(cacheKey, data, CACHE_TTL)
-
-    return data
-
-
-def serviceListingAllCoveredWarrant(source: str):
-
-    cacheKey = f"listing:{source}:covered_warrant"
-
-    cached = cacheGet(cacheKey)
-    if cached:
-        return cached
-
-    listing = get_listing(source)
-
-    series = listing.all_covered_warrant()
-
-    data = normalize_data(series)
-
-    cacheSet(cacheKey, data, CACHE_TTL)
-
-    return data
-
-
-def serviceListingAllBonds(source: str):
-
-    cacheKey = f"listing:{source}:bonds"
-
-    cached = cacheGet(cacheKey)
-    if cached:
-        return cached
-
-    listing = get_listing(source)
-
-    series = listing.all_bonds()
-
-    data = normalize_data(series)
-
-    cacheSet(cacheKey, data, CACHE_TTL)
-
-    return data
-
-
-def serviceListingAllGovernmentBonds(source: str):
-    if source.upper() == "KBS":
-        raise HTTPException(
-            status_code=400,
-            detail="KBS does not support government bonds. Use VCI source instead."
-        )
-
-    cacheKey = f"listing:{source}:government_bonds"
-
-    cached = cacheGet(cacheKey)
-    if cached:
-        return cached
-
-    listing = get_listing(source)
-
-    series = listing.all_government_bonds()
-
-    data = normalize_data(series)
-
-    cacheSet(cacheKey, data, CACHE_TTL)
-
-    return data
-
-
-def serviceListingSearchSymbolId(symbol: str):
+def service_listing_search_symbol_id(symbol: str):
     from vnstock.explorer.msn.listing import Listing as MsnListing
 
     cacheKey = f"listing:search_symbol_id:{symbol}"

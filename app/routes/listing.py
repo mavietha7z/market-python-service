@@ -1,21 +1,19 @@
-from fastapi import APIRouter, Query, Header, HTTPException
+from fastapi.responses import JSONResponse
+from fastapi import APIRouter, Query, Header
 
 from app.services.listing import (
-    serviceListingAllSymbols,
-    serviceListingSymbolsByExchange,
-    serviceListingSymbolsByGroup,
-    serviceListingSymbolsByIndustries,
-    serviceListingIndustriesICB,
-    serviceListingAllIndices,
-    serviceListingIndicesByGroup,
-    serviceListingAllFutureIndices,
-    serviceListingAllCoveredWarrant,
-    serviceListingAllBonds,
-    serviceListingAllGovernmentBonds,
-    serviceListingSearchSymbolId
+    service_listing_all_symbols,
+    service_listing_all_indices,
+    service_listing_industries_icb,
+    service_listing_search_symbol_id,
+    service_listing_symbols_by_group,
+    service_listing_indices_by_group,
+    service_listing_symbols_by_exchange,
+    service_listing_symbols_by_industries,
 )
 
-VALID_SOURCES = {"KBS", "VCI"}
+DEFAULT_MULTI_SOURCE = "VCI"
+VALID_SOURCES = {"VCI", "KBS"}
 
 router = APIRouter(
     prefix="",
@@ -26,178 +24,158 @@ router = APIRouter(
 # =============================
 # Helpers
 # =============================
+def error_response(status_code: int, message: str):
+    return JSONResponse(
+        status_code=status_code,
+        content={
+            "status": status_code,
+            "message": message
+        }
+    )
 
-def validate_source(source: str) -> str:
-    source = source.upper()
 
-    if source not in VALID_SOURCES:
-        raise HTTPException(
-            status_code=400,
-            detail=f"Invalid source. Supported sources: {', '.join(VALID_SOURCES)}"
+def resolve_multi_source(source: str | None):
+    """
+    API hỗ trợ 2 nguồn:
+    - Không truyền source -> mặc định VCI
+    - Có truyền -> chỉ chấp nhận KBS hoặc VCI
+    """
+    if source is None or source == "":
+        return DEFAULT_MULTI_SOURCE
+
+    normalizedSource = source.upper()
+
+    if normalizedSource not in VALID_SOURCES:
+        return error_response(
+            400,
+            "Nguồn không hợp lệ. Các nguồn được hỗ trợ: KBS, VCI"
         )
 
-    return source
+    return normalizedSource
+
+
+def resolve_single_source(fixed_source: str):
+    """
+    API chỉ hỗ trợ 1 nguồn:
+    - Không cần nhận source từ client
+    - Luôn dùng nguồn cố định
+    """
+    return fixed_source.upper()
 
 
 def base_response(source: str, data):
     return {
-        "status": "success",
+        "status": 200,
         "source": source,
         "data": data
     }
 
 
-def handle_request(service_func, source, *args):
-    source = validate_source(source)
+def handle_request_multi_source(service_func, source, api_key, **kwargs):
+    resolvedSource = resolve_multi_source(source)
 
-    data = service_func(source, *args)
+    if isinstance(resolvedSource, JSONResponse):
+        return resolvedSource
 
-    return base_response(source, data)
+    data = service_func(resolvedSource, **kwargs)
+
+    return base_response(resolvedSource, data)
+
+
+def handle_request_single_source(service_func, fixed_source, api_key, **kwargs):
+    resolvedSource = resolve_single_source(fixed_source)
+
+    data = service_func(resolvedSource, **kwargs)
+
+    return base_response(resolvedSource, data)
 
 
 # =============================
-# ALL SYMBOLS
+# Liệt kê tất cả mã chứng khoán (KBS và VCI)
 # =============================
-
 @router.get("/all-symbols")
-def routeListingAllSymbols(
-    source: str = Query("KBS"),
+def api_list_all_symbols(
+    source: str | None = Query(None),
     x_api_key: str = Header(..., alias="X-API-Key")
 ):
-    return handle_request(serviceListingAllSymbols, source)
+    return handle_request_multi_source(service_listing_all_symbols, source, x_api_key)
 
 
 # =============================
-# SYMBOLS BY EXCHANGE
+# Liệt kê mã chứng khoán theo sàn (KBS và VCI)
 # =============================
-
 @router.get("/symbols-by-exchange")
-def routeListingSymbolsByExchange(
+def api_listing_symbols_by_exchange(
     exchange: str = Query(..., description="HOSE | HNX | UPCOM"),
-    source: str = Query("KBS"),
+    source: str | None = Query(None),
     x_api_key: str = Header(..., alias="X-API-Key")
 ):
-    return handle_request(serviceListingSymbolsByExchange, source, exchange)
+    return handle_request_multi_source(service_listing_symbols_by_exchange, source, x_api_key, exchange=exchange)
 
 
 # =============================
-# SYMBOLS BY GROUP
+# Liệt kê chứng khoán theo phân nhóm (KBS và VCI)
 # =============================
-
 @router.get("/symbols-by-group")
-def routeListingSymbolsByGroup(
+def api_listing_symbols_by_group(
     group: str = Query(..., description="VN30 | VN100 | ETF | ..."),
-    source: str = Query("KBS"),
+    source: str | None = Query(None),
     x_api_key: str = Header(..., alias="X-API-Key")
 ):
-    return handle_request(serviceListingSymbolsByGroup, source, group)
+    return handle_request_multi_source(service_listing_symbols_by_group, source, x_api_key, group=group)
 
 
 # =============================
-# SYMBOLS BY INDUSTRIES
+# Chứng khoán theo ngành (KBS và VCI)
 # =============================
-
 @router.get("/symbols-by-industries")
-def routeListingSymbolsByIndustries(
-    source: str = Query("KBS"),
+def api_listing_symbols_by_industries(
+    source: str | None = Query(None),
     x_api_key: str = Header(..., alias="X-API-Key")
 ):
-    return handle_request(serviceListingSymbolsByIndustries, source)
+    return handle_request_multi_source(service_listing_symbols_by_industries, source, x_api_key)
 
 
 # =============================
-# INDUSTRIES ICB
+# Phân loại ngành ICB (Chỉ VCI)
 # =============================
-
 @router.get("/industries-icb")
-def routeListingIndustriesICB(
-    source: str = Query("KBS"),
+def api_listing_industries_icb(
     x_api_key: str = Header(..., alias="X-API-Key")
 ):
-    return handle_request(serviceListingIndustriesICB, source)
+    return handle_request_single_source(service_listing_industries_icb, 'VCI', x_api_key)
 
 
 # =============================
-# ALL INDICES
+# Liệt kê tất cả chỉ số (KBS và VCI)
 # =============================
-
 @router.get("/all-indices")
-def routeListingAllIndices(
-    source: str = Query("KBS"),
+def api_listing_all_indices(
+    source: str | None = Query(None),
     x_api_key: str = Header(..., alias="X-API-Key")
 ):
-    return handle_request(serviceListingAllIndices, source)
+    return handle_request_multi_source(service_listing_all_indices, source, x_api_key)
 
 
 # =============================
-# INDICES BY GROUP
+# Liệt kê chỉ số theo nhóm (KBS và VCI)
 # =============================
-
 @router.get("/indices-by-group")
-def routeListingIndicesByGroup(
+def api_listing_indices_by_group(
     group: str = Query(..., description="HOSE Indices | Sector Indices | Investment Indices | VNX Indices"),
-    source: str = Query("KBS"),
+    source: str | None = Query(None),
     x_api_key: str = Header(..., alias="X-API-Key")
 ):
-    return handle_request(serviceListingIndicesByGroup, source, group)
+    return handle_request_multi_source(service_listing_indices_by_group, source, x_api_key, group=group)
 
 
 # =============================
-# ALL FUTURE INDICES
+# Tìm mã chứng khoán quốc tế (KBS và VCI)
 # =============================
-
-@router.get("/all-future-indices")
-def routeListingAllFutureIndices(
-    source: str = Query("KBS"),
-    x_api_key: str = Header(..., alias="X-API-Key")
-):
-    return handle_request(serviceListingAllFutureIndices, source)
-
-
-# =============================
-# ALL COVERED WARRANT
-# =============================
-
-@router.get("/all-covered-warrant")
-def routeListingAllCoveredWarrant(
-    source: str = Query("KBS"),
-    x_api_key: str = Header(..., alias="X-API-Key")
-):
-    return handle_request(serviceListingAllCoveredWarrant, source)
-
-
-# =============================
-# ALL BONDS
-# =============================
-
-@router.get("/all-bonds")
-def routeListingAllBonds(
-    source: str = Query("KBS"),
-    x_api_key: str = Header(..., alias="X-API-Key")
-):
-    return handle_request(serviceListingAllBonds, source)
-
-
-# =============================
-# ALL GOVERNMENT BONDS
-# =============================
-
-@router.get("/all-government-bonds")
-def routeListingAllGovernmentBonds(
-    source: str = Query("VCI"),
-    x_api_key: str = Header(..., alias="X-API-Key")
-):
-    return handle_request(serviceListingAllGovernmentBonds, source)
-
-
-# =============================
-# SEARCH SYMBOL ID
-# =============================
-
 @router.get("/search-symbol-id")
-def routeListingSearchSymbolId(
+def api_listing_search_symbol_id(
     symbol: str = Query(..., description="USD | EUR | BTC | ..."),
+    source: str | None = Query(None),
     x_api_key: str = Header(..., alias="X-API-Key")
 ):
-    source = "VCI"
-    return base_response(source, serviceListingSearchSymbolId(symbol))
+    return handle_request_multi_source(service_listing_search_symbol_id, source, x_api_key, symbol=symbol)
